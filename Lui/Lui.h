@@ -29,7 +29,6 @@ typedef std::wstring LTstdstr;
 typedef std::string LTstdstr;
 #endif // UNICODE
 
-
 class Lui;
 class LWindow;
 class LButton;
@@ -37,6 +36,8 @@ class LButton;
 struct LCrood {
 	DWORD x, y;
 };
+
+typedef RECT LRect;
 
 class Lui
 {
@@ -48,23 +49,79 @@ public:
 class LWindow : Lui
 {
 public:
+	LWindow()
+	{
+		// ==========TODO: add default slot functions==========
+		slotsFunc[Close] = [](void*) {};
+	}
 	//register & create
 	bool create()
 	{
-
+		if (this->creation)
+		{
+			throw std::runtime_error("Error: window class REcreation");
+			return false;
+		}
+		WNDCLASSEXW wcex;
+		wcex.cbSize = sizeof(WNDCLASSEX);
+		wcex.style = CS_HREDRAW | CS_VREDRAW;
+		wcex.lpfnWndProc = this->wndProc;
+		wcex.cbClsExtra = 0;
+		wcex.cbWndExtra = 0;
+		wcex.hInstance = this->thisHINSTANCE;
+		wcex.hIcon = LoadIcon(this->thisHINSTANCE, MAKEINTRESOURCE(107));
+		wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+		wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+		wcex.lpszMenuName = MAKEINTRESOURCEW(109);
+		wcex.lpszClassName = this->thisclassname.c_str();
+		wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(108));
+		this->creation = RegisterClassEx(&wcex);
+		this->thisHWND = CreateWindowW(this->thisclassname.c_str(), this->thistitle.c_str(), this->thisstyle,
+			CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, this->thisHINSTANCE, nullptr);
+		this->creation = this->creation && this->thisHWND;
 		return this->creation;
 	}
-
-	bool init(const LTstdstr& classname, const LTstdstr& title)
+	void init(const LTstdstr& title = TEXT("window title"),
+		const INT32 style = OverlappedWindow,
+		const LWindow* parent_window = NULL,
+		const LRect& rect = { 0,0,800,600 },
+		const bool adj = true,
+		const bool hasmenu = false,
+		const LTstdstr& classname = TEXT("LuiWindowClass"))
 	{
-
+		this->thisclassname = classname;
+		this->thistitle = title;
+		this->thisparent_window = const_cast<LWindow*>(parent_window);
+		this->thisstyle = style;
+		this->thisrect = rect;
+		this->menu = hasmenu;
+		if (adj)
+			AdjustWindowRectEx(&this->thisrect, this->thisstyle, this->menu, this->thisstyle);
 	}
-	void setupUi();
+	// ==========TODO: dynamically & statically adding ui elements==========
+	//void setupUi();
+	int handleMessages()
+	{
+		MSG msg;
+		//main message loop
+		while (GetMessage(&msg, this->thisHWND, 0, 0) > 0)
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+		return (int)msg.wParam;
+	}
+	void show() const
+	{
+		ShowWindow(this->thisHWND, SW_SHOW);
+		UpdateWindow(this->thisHWND);
+	}
 	enum Signal {
 		LButtonDown,
 		RButtonDown,
 		LButtonMove,
 		RButtonMove,
+		Create,
 		Close,
 		__last
 	};
@@ -100,7 +157,7 @@ public:
 	};
 	void connect(Signal slot, LFuncType func) {
 #ifdef _DEBUG
-		if (slot >= __last)
+		if (slot >= __last || slot < 0)
 		{
 			throw std::runtime_error("Error: slot index out of range");
 			return;
@@ -108,17 +165,22 @@ public:
 #endif // _DEBUG
 		slotsFunc[slot] = func;
 	}
-	LButton* newButton();
-
+	// ==========TODO: generating menus==========
 private:
-	LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-	bool creation = false;
+	static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	HWND thisHWND = NULL;
-	LFuncType slotsFunc[__last] = { (LFuncType)DefaultFunction };
+	DWORD thisstyle = OverlappedWindow;
+	LWindow* thisparent_window = NULL;
+	LRect thisrect;
+	bool creation = false;
+	bool menu = false;
+	// ==========FIXME: const_cast not available==========
+	LFuncType slotsFunc[__last] = { (void(*)(void*))(Lui::DefaultFunction) };
+	// ==========TODO: vector of LButton==========
 	//std::vector<LButton> buttons;
 
 	LTstdstr thisclassname, thistitle;
-};
+		};
 
 class LButton : Lui
 {
@@ -151,36 +213,63 @@ private:
 	HMENU thisHMENU;
 	static DWORD lastHMENU;
 
-};
-
-//namespace for private global variables
-namespace nLui
-{
-	static HINSTANCE thisHINSTANCE = NULL;
-}
+	};
 
 //static class variables initialization
 DWORD LButton::lastHMENU = ID_BTN;
-
-//handle messages
+HINSTANCE Lui::thisHINSTANCE = NULL;
+//core: handle messages
 LRESULT CALLBACK LWindow::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	return DefWindowProc(hwnd, msg, wParam, lParam);
+	// ========== TODO: button messages ==========
+	switch (msg)
+	{
+	case WM_COMMAND:
+	{
+		int wmId = LOWORD(wParam);
+		// button and menu messages
+		switch (wmId)
+		{
+			
+		default:
+			return DefWindowProc(hwnd, msg, wParam, lParam);
+		}
+	}
+	break;
+	case WM_CREATE:
+	{
+		// ========== TODO: create buttons ==========
+
+	}
+	break;
+	case WM_PAINT:
+	{
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(hwnd, &ps);
+		// TODO: 在此处添加使用 hdc 的任何绘图代码...
+		EndPaint(hwnd, &ps);
+	}
+	break;
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		break;
+	default:
+		return DefWindowProc(hwnd, msg, wParam, lParam);
+	}
+	return 0;
+
 }
-/*
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
-	_In_opt_ HINSTANCE hPrevInstance,
-	_In_ LPWSTR    lpCmdLine,
-	_In_ int       nCmdShow)
-*/
+
 int main(int argc, char** argv);
+
 MAINDECLARE(hInstance, hPrevInstance, lpCmdLine, nCmdShow)
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
-
-
-	//invoke_main
-
-	return 0;
+	Lui::thisHINSTANCE = hInstance;
+	LWindow window;
+	window.init();
+	auto a = window.create();
+	window.show();
+	return window.handleMessages();
 }
