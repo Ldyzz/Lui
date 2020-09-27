@@ -33,24 +33,25 @@ class LWindow;
 class LWindowClass;
 class LButton;
 
-struct LCrood {
-	DWORD x, y;
+class LCrood {
+public:
+	LONG x, y;
+	LCrood(LONG nx, LONG ny) :x(nx), y(ny) {}
 };
-
 typedef RECT LRect;
 
 class Lui
 {
 	friend class LWindowClass;
 protected:
-	bool bAccessable = true;
 	static HINSTANCE thisHINSTANCE;
+	bool bAccessable = true;
 	void checkAccess()const
 	{
 		if (!this->bAccessable)
 			throw std::runtime_error("Error: trying to access destroyed window");
 	}
-
+	static std::vector<LWindow> windows;
 public:
 	// ========== FIXME: may need c++ 11 ==========
 	enum Style :DWORD;
@@ -134,11 +135,17 @@ private:
 
 class LWindow : Lui
 {
+	friend class LWindowClass;
 public:
 	LWindow()
 	{
 		// ==========TODO: add default slot functions==========
 		slotsFunc[Close] = [](void*) {};
+	}
+	static LWindow* newWindow()
+	{
+		Lui::windows.emplace_back();
+		return &Lui::windows.back();
 	}
 	//register & create
 	bool create()
@@ -172,9 +179,9 @@ public:
 		return this->bCreation;
 	}
 	void init(const LTstdstr& title = TEXT("window title"),
+		const LRect& rect = { 100,100,800,600 },
 		const INT32 style = OverlappedWindow,
 		const LWindow* parent_window = NULL,
-		const LRect& rect = { 100,100,800,600 },
 		const bool hasmenu = false,
 		const LWindowClass& windowclass = LWindowClass::default_windowclass)
 	{
@@ -253,14 +260,14 @@ public:
 		PopupWindow = WS_POPUPWINDOW,
 		ChildWindow = WS_CHILDWINDOW
 	};
-	void connect(Signal slot, LFuncType func) {
-#ifdef _DEBUG
+	void connect(DWORD slot, LFuncType func) {
+#ifndef LUI_NOT_CHECK
 		if (slot >= __last || slot < 0)
 		{
 			throw std::runtime_error("Error: slot index out of range");
 			return;
 		}
-#endif // _DEBUG
+#endif // LUI_NOT_CHECK
 		slotsFunc[slot] = func;
 	}
 	// ==========TODO: generating menus==========
@@ -278,7 +285,6 @@ private:
 	LFuncType slotsFunc[__last] = { (Lui::DefaultFunction) };
 	// ==========TODO: vector of LButton==========
 	//std::vector<LButton> buttons;
-
 	LTstdstr thistitle;
 };
 
@@ -319,11 +325,18 @@ private:
 DWORD LButton::lastHMENU = ID_BTN;
 HINSTANCE Lui::thisHINSTANCE = NULL;
 LWindowClass LWindowClass::default_windowclass = LWindowClass();
+std::vector<LWindow> Lui::windows;
 
 //core: handle messages
 LRESULT CALLBACK LWindowClass::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	// ========== TODO: button messages ==========
+	LWindow window;
+	for (auto a = Lui::windows.begin(); a != Lui::windows.end(); a++)
+	{
+		if (a->thisHWND == hwnd)
+			break;
+	}
 	switch (msg)
 	{
 	case WM_COMMAND:
@@ -336,11 +349,17 @@ LRESULT CALLBACK LWindowClass::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		default:
 			return DefWindowProc(hwnd, msg, wParam, lParam);
 		}
+		break;
 	}
-	break;
+	case WM_LBUTTONDOWN:
+	{
+		(window.slotsFunc[LWindow::Signal::LButtonDown])(NULL);
+		break;
+	}
 	case WM_CREATE:
 	{
 		// ========== TODO: create ui elements ==========
+
 
 		break;
 	}
@@ -368,14 +387,20 @@ LRESULT CALLBACK LWindowClass::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 int main(int argc, char** argv);
 
+void fun(void*) 
+{
+	MessageBox(NULL, TEXT("hello"), TEXT("caption"), 0); 
+}
+
 MAINDECLARE(hInstance, hPrevInstance, lpCmdLine, nCmdShow)
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 	Lui::setHINSTANCE(hInstance);
-	LWindow window;
-	window.init();
-	auto a = window.create();
-	a = window.show();
-	return window.handleMessages();
+	LWindow* window = LWindow::newWindow();
+	window->init();
+	window->create();
+	window->connect(LWindow::Signal::LButtonDown, fun);
+	window->show();
+	return window->handleMessages();
 }
