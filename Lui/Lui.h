@@ -54,7 +54,7 @@ protected:
 		if (!this->bAccessable)
 			throw std::runtime_error("Error: trying to access destroyed window");
 	}
-	static std::vector<LWindow> windows;
+	static std::vector<LWindow> vec_windows;
 public:
 	// ========== FIXME: may need c++ 11 ==========
 	enum Style :DWORD;
@@ -148,8 +148,8 @@ public:
 	}
 	static LWindow* newWindow()
 	{
-		Lui::windows.emplace_back();
-		return &Lui::windows.back();
+		Lui::vec_windows.emplace_back();
+		return &Lui::vec_windows.back();
 	}
 	//register & create
 	bool create()
@@ -331,14 +331,14 @@ private:
 DWORD LButton::lastHMENU = ID_BTN;
 HINSTANCE Lui::thisHINSTANCE = NULL;
 LWindowClass LWindowClass::default_windowclass = LWindowClass();
-std::vector<LWindow> Lui::windows;
+std::vector<LWindow> Lui::vec_windows;
 
 //core: handle messages
 LRESULT CALLBACK LWindowClass::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	// ========== TODO: button messages ==========
 	LWindow* window = nullptr;
-	for (auto a = Lui::windows.begin(); a != Lui::windows.end(); a++)
+	for (auto a = Lui::vec_windows.begin(); a != Lui::vec_windows.end(); a++)
 	{
 		if (a->thisHWND == hwnd)
 		{
@@ -415,29 +415,13 @@ def:
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-int main(int argc, char** argv);
-
-void fun(void*)
-{
-	MessageBox(NULL, TEXT("hello"), TEXT("caption"), 0);
-}
+int main(int argc, TCHAR** argv);
 
 MAINDECLARE(hInstance, hPrevInstance, lpCmdLine, nCmdShow)
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 	Lui::setHINSTANCE(hInstance);
-	LWindow* window = LWindow::newWindow();
-	window->init();
-	window->create();
-	window->connect(LWindow::Signal::RButtonDown, [](void* param) {
-		LTstdstr context(TEXT("LButtonDown:("));
-		context += lto_tstring(((LCrood*)param)->x);
-		context += TEXT(",");
-		context += lto_tstring(((LCrood*)param)->y);
-		context += TEXT(")");
-		MessageBox(NULL, context.c_str(), TEXT("LButtonDown"), 0);
-		});
-	window->show();
-	return window->handleMessages();
+	//TODO: generate argc & argv
+	return main(0, NULL);
 }
