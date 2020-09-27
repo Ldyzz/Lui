@@ -4,6 +4,7 @@
 #include <comdef.h>
 #include <string>
 #include <vector>
+#include <functional>
 #include <stdexcept>
 
 //#define LUI_NOT_CHECK
@@ -15,6 +16,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,\
 	_In_ LPWSTR lpCmdLine,\
 	_In_ int nCmdShow)
 typedef std::wstring LTstdstr;
+#define lto_tstring std::to_wstring
 #else
 #define MAINDECLARE(hInstance,hPrevInstance,lpCmdLine,nCmdShow)\
 int APIENTRY WinMain(_In_ HINSTANCE hInstance,\
@@ -22,11 +24,12 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,\
 	_In_ LPSTR lpCmdLine,\
 	_In_ int nCmdShow)
 typedef std::string LTstdstr;
+#define lto_tstring std::to_string
 #endif // UNICODE
 
 constexpr DWORD ID_BTN = 1000;
 
-typedef void(*LFuncType)(void*);
+typedef std::function<void(void*)> LFuncType;
 
 class Lui;
 class LWindow;
@@ -140,7 +143,8 @@ public:
 	LWindow()
 	{
 		// ==========TODO: add default slot functions==========
-		slotsFunc[Close] = [](void*) {};
+		for (int i = 0; i < LWindow::Signal::__last; i++)
+			this->slotsFunc[i] = Lui::DefaultFunction;
 	}
 	static LWindow* newWindow()
 	{
@@ -224,8 +228,9 @@ public:
 	enum Signal {
 		LButtonDown,
 		RButtonDown,
-		LButtonMove,
-		RButtonMove,
+		LButtonUp,
+		RButtonUp,
+		MouseMove,
 		Create,
 		Close,
 		__last
@@ -268,8 +273,8 @@ public:
 			return;
 		}
 #endif // LUI_NOT_CHECK
-		memcpy(slotsFunc[slot], &func, sizeof(func));
-		//slotsFunc[slot] = func;
+		//memcpy(slotsFunc[slot], &func, sizeof(func));
+		slotsFunc[slot] = (func);
 	}
 	// ==========TODO: generating menus==========
 private:
@@ -332,12 +337,17 @@ std::vector<LWindow> Lui::windows;
 LRESULT CALLBACK LWindowClass::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	// ========== TODO: button messages ==========
-	LWindow window;
+	LWindow* window = nullptr;
 	for (auto a = Lui::windows.begin(); a != Lui::windows.end(); a++)
 	{
 		if (a->thisHWND == hwnd)
+		{
+			window = &*a;
 			break;
+		}
 	}
+	if (window == nullptr || window->thisHWND != hwnd)
+		goto def;
 	switch (msg)
 	{
 	case WM_COMMAND:
@@ -354,13 +364,32 @@ LRESULT CALLBACK LWindowClass::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 	}
 	case WM_LBUTTONDOWN:
 	{
-		(window.slotsFunc[LWindow::Signal::LButtonDown])(NULL);
+		(window->slotsFunc[LWindow::Signal::LButtonDown])(&LCrood(LOWORD(lParam), HIWORD(lParam)));
+		break;
+	}
+	case WM_RBUTTONDOWN:
+	{
+		(window->slotsFunc[LWindow::Signal::RButtonDown])(&LCrood(LOWORD(lParam), HIWORD(lParam)));
+		break;
+	}
+	case WM_LBUTTONUP:
+	{
+		(window->slotsFunc[LWindow::Signal::LButtonUp])(&LCrood(LOWORD(lParam), HIWORD(lParam)));
+		break;
+	}
+	case WM_RBUTTONUP:
+	{
+		(window->slotsFunc[LWindow::Signal::RButtonUp])(&LCrood(LOWORD(lParam), HIWORD(lParam)));
+		break;
+	}
+	case WM_MOUSEMOVE:
+	{
+		(window->slotsFunc[LWindow::Signal::MouseMove])(&LCrood(LOWORD(lParam), HIWORD(lParam)));
 		break;
 	}
 	case WM_CREATE:
 	{
 		// ========== TODO: create ui elements ==========
-
 
 		break;
 	}
@@ -382,15 +411,15 @@ LRESULT CALLBACK LWindowClass::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		return DefWindowProc(hwnd, msg, wParam, lParam);
 	}
 	}
-	return 0;
-
+def:
+	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
 int main(int argc, char** argv);
 
-void fun(void*) 
+void fun(void*)
 {
-	MessageBox(NULL, TEXT("hello"), TEXT("caption"), 0); 
+	MessageBox(NULL, TEXT("hello"), TEXT("caption"), 0);
 }
 
 MAINDECLARE(hInstance, hPrevInstance, lpCmdLine, nCmdShow)
@@ -401,7 +430,14 @@ MAINDECLARE(hInstance, hPrevInstance, lpCmdLine, nCmdShow)
 	LWindow* window = LWindow::newWindow();
 	window->init();
 	window->create();
-	window->connect(LWindow::Signal::LButtonDown, fun);
+	window->connect(LWindow::Signal::RButtonDown, [](void* param) {
+		LTstdstr context(TEXT("LButtonDown:("));
+		context += lto_tstring(((LCrood*)param)->x);
+		context += TEXT(",");
+		context += lto_tstring(((LCrood*)param)->y);
+		context += TEXT(")");
+		MessageBox(NULL, context.c_str(), TEXT("LButtonDown"), 0);
+		});
 	window->show();
 	return window->handleMessages();
 }
