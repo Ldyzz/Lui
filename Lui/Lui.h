@@ -6,31 +6,31 @@
 #include <vector>
 #include <stdexcept>
 
+//#define LUI_NOT_CHECK
+
 #ifdef UNICODE
 #define MAINDECLARE(hInstance,hPrevInstance,lpCmdLine,nCmdShow)\
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,\
 	_In_opt_ HINSTANCE hPrevInstance,\
 	_In_ LPWSTR lpCmdLine,\
 	_In_ int nCmdShow)
+typedef std::wstring LTstdstr;
 #else
 #define MAINDECLARE(hInstance,hPrevInstance,lpCmdLine,nCmdShow)\
 int APIENTRY WinMain(_In_ HINSTANCE hInstance,\
 	_In_opt_ HINSTANCE hPrevInstance,\
 	_In_ LPSTR lpCmdLine,\
 	_In_ int nCmdShow)
+typedef std::string LTstdstr;
 #endif // UNICODE
 
 constexpr DWORD ID_BTN = 1000;
 
 typedef void(*LFuncType)(void*);
-#if UNICODE
-typedef std::wstring LTstdstr;
-#else
-typedef std::string LTstdstr;
-#endif // UNICODE
 
 class Lui;
 class LWindow;
+class LWindowClass;
 class LButton;
 
 struct LCrood {
@@ -41,9 +41,95 @@ typedef RECT LRect;
 
 class Lui
 {
-public:
-	const static void DefaultFunction(void*) {};
+	friend class LWindowClass;
+protected:
+	bool bAccessable = true;
 	static HINSTANCE thisHINSTANCE;
+	void checkAccess()const
+	{
+		if (!this->bAccessable)
+			throw std::runtime_error("Error: trying to access destroyed window");
+	}
+
+public:
+	// ========== FIXME: may need c++ 11 ==========
+	enum Style :DWORD;
+	bool isAccessable()const { return this->bAccessable; };
+	static void DefaultFunction(void*) {};
+	static void setHINSTANCE(HINSTANCE nh)
+	{
+		if (!Lui::thisHINSTANCE)//only set once
+			Lui::thisHINSTANCE = nh;
+#ifndef LUI_NOT_CHECK
+		else
+			throw std::runtime_error("Error: hInstance can only be set once");
+#endif
+	}
+};
+
+class LWindowClass : Lui {
+	friend class LWindow;
+	static LWindowClass default_windowclass;
+public:
+	//constructor
+	LWindowClass(const LTstdstr& classname = TEXT("LuiWindowClass"), const DWORD dwstyle = LWindowClass::Style::Default)
+	{
+		this->thisclassname = classname;
+		this->thisstyle = dwstyle;
+	}
+	enum Style {
+		//copied from https://docs.microsoft.com/en-us/windows/win32/winmsg/window-class-styles
+		BytealignClient = CS_BYTEALIGNCLIENT,	//Aligns the window's client area on a byte boundary (in the x direction). This style affects the width of the window and its horizontal placement on the display.
+		BytealignWindow = CS_BYTEALIGNWINDOW,	//Aligns the window on a byte boundary(in the x direction).This style affects the width of the window and its horizontal placement on the display.
+		ClassDC = CS_CLASSDC,					//Allocates one device context to be shared by all windows in the class.Because window classes are process specific, it is possible for multiple threads of an application to create a window of the same class.It is also possible for the threads to attempt to use the device context simultaneously.When this happens, the system allows only one thread to successfully finish its drawing operation.
+		DblClks = CS_DBLCLKS,					//Sends a double - click message to the window procedure when the user double - clicks the mouse while the cursor is within a window belonging to the class.
+		DropShadow = CS_DROPSHADOW,				//Enables the drop shadow effect on a window.The effect is turned on and off through SPI_SETDROPSHADOW.Typically, this is enabled for small, short - lived windows such as menus to emphasize their Z - order relationship to other windows.Windows created from a class with this style must be top - level windows; they may not be child windows.
+		Globalclass = CS_GLOBALCLASS,			//Indicates that the window class is an application global class.For more information, see the "Application Global Classes" section of About Window Classes.
+		HRedraw = CS_HREDRAW,					//Redraws the entire window if a movement or size adjustment changes the width of the client area.
+		NoClose = CS_NOCLOSE,					//Disables Close on the window menu.
+		OwnDC = CS_OWNDC,						//Allocates a unique device context for each window in the class.
+		ParentDC = CS_PARENTDC,					//Sets the clipping rectangle of the child window to that of the parent window so that the child can draw on the parent.A window with the CS_PARENTDC style bit receives a regular device context from the system's cache of device contexts. It does not give the child the parent's device context or device context settings.Specifying CS_PARENTDC enhances an application's performance.
+		SaveBits = CS_SAVEBITS,					//Saves, as a bitmap, the portion of the screen image obscured by a window of this class.When the window is removed, the system uses the saved bitmap to restore the screen image, including other windows that were obscured.Therefore, the system does not send WM_PAINT messages to windows that were obscured if the memory used by the bitmap has not been discardedand if other screen actions have not invalidated the stored image.
+		//This style is useful for small windows(for example, menus or dialog boxes) that are displayed brieflyand then removed before other screen activity takes place.This style increases the time required to display the window, because the system must first allocate memory to store the bitmap.
+		VRedraw = CS_VREDRAW,					//Redraws the entire window if a movement or size adjustment changes the height of the client area.
+		Default = CS_HREDRAW | CS_VREDRAW		//Default window class: CS_HREDRAW | CS_VREDRAW
+	};
+private:
+	bool registerClass()
+	{
+		if (this->bRegistration)
+		{
+#ifndef LUI_NOT_CHECK
+			throw std::runtime_error("Error: WindowClass RE registration");
+#endif
+			return false;
+		}
+		return this->bRegistration = RegisterClassEx(&this->getWndClassEx());
+	}
+	WNDCLASSEX getWndClassEx()
+	{
+		//using default icons
+		// ========== TODO: add support for custom icons ==========
+		WNDCLASSEX ret;
+		ZeroMemory(&ret, sizeof(ret));
+		ret.cbSize = sizeof(WNDCLASSEX);
+		ret.style = CS_HREDRAW | CS_VREDRAW;
+		ret.lpfnWndProc = this->wndProc;
+		ret.cbClsExtra = 0;
+		ret.cbWndExtra = 0;
+		ret.hInstance = this->thisHINSTANCE;
+		ret.hIcon = LoadIcon(this->thisHINSTANCE, IDI_APPLICATION);
+		ret.hCursor = LoadCursor(nullptr, IDC_ARROW);
+		ret.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+		ret.lpszMenuName = NULL;
+		ret.lpszClassName = this->thisclassname.c_str();
+		ret.hIconSm = LoadIcon(ret.hInstance, IDI_APPLICATION);
+		return ret;
+	}
+	bool bRegistration = false;
+	static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	LTstdstr thisclassname;
+	DWORD thisstyle = Default;
 };
 
 class LWindow : Lui
@@ -57,49 +143,54 @@ public:
 	//register & create
 	bool create()
 	{
-		if (this->creation)
+		if (this->bCreation)
 		{
-			throw std::runtime_error("Error: window class REcreation");
+#ifndef LUI_NOT_CHECK
+			throw std::runtime_error("Error: window class RE creation");
+#endif // !LUI_NOT_CHECK
 			return false;
 		}
-		WNDCLASSEXW wcex;
-		wcex.cbSize = sizeof(WNDCLASSEX);
-		wcex.style = CS_HREDRAW | CS_VREDRAW;
-		wcex.lpfnWndProc = this->wndProc;
-		wcex.cbClsExtra = 0;
-		wcex.cbWndExtra = 0;
-		wcex.hInstance = this->thisHINSTANCE;
-		wcex.hIcon = LoadIcon(this->thisHINSTANCE, MAKEINTRESOURCE(107));
-		wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-		wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-		wcex.lpszMenuName = MAKEINTRESOURCEW(109);
-		wcex.lpszClassName = this->thisclassname.c_str();
-		wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(108));
-		this->creation = RegisterClassEx(&wcex);
-		this->thisHWND = CreateWindowW(this->thisclassname.c_str(), this->thistitle.c_str(), this->thisstyle,
-			CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, this->thisHINSTANCE, nullptr);
-		this->creation = this->creation && this->thisHWND;
-		return this->creation;
+		this->bCreation = this->thiswindowclass.registerClass();
+		LONG x, y, w, h;
+		if (this->thisrect.left == CW_USEDEFAULT && this->thisrect.right == CW_USEDEFAULT && this->thisrect.bottom == CW_USEDEFAULT && this->thisrect.top == CW_USEDEFAULT)
+		{
+			x = CW_USEDEFAULT, y = CW_USEDEFAULT, w = CW_USEDEFAULT, h = CW_USEDEFAULT;
+		}
+		else
+		{
+			//using custom display position
+			x = this->thisrect.left, y = this->thisrect.top;
+			w = this->thisrect.right - this->thisrect.left;
+			h = this->thisrect.bottom - this->thisrect.top;
+		}
+		this->thisHWND = CreateWindowW(
+			this->thiswindowclass.thisclassname.c_str(), this->thistitle.c_str(), this->thisstyle,
+			//nX,nY,nW,nH
+			x, y, w, h,
+			nullptr, nullptr, this->thisHINSTANCE, nullptr);
+		this->bCreation = this->bCreation && this->thisHWND;
+		return this->bCreation;
 	}
 	void init(const LTstdstr& title = TEXT("window title"),
 		const INT32 style = OverlappedWindow,
 		const LWindow* parent_window = NULL,
-		const LRect& rect = { 0,0,800,600 },
-		const bool adj = true,
+		const LRect& rect = { 100,100,800,600 },
 		const bool hasmenu = false,
-		const LTstdstr& classname = TEXT("LuiWindowClass"))
+		const LWindowClass& windowclass = LWindowClass::default_windowclass)
 	{
-		this->thisclassname = classname;
+		this->thiswindowclass = windowclass;
 		this->thistitle = title;
 		this->thisparent_window = const_cast<LWindow*>(parent_window);
 		this->thisstyle = style;
 		this->thisrect = rect;
-		this->menu = hasmenu;
-		if (adj)
-			AdjustWindowRectEx(&this->thisrect, this->thisstyle, this->menu, this->thisstyle);
+		this->bMenu = hasmenu;
+		AdjustWindowRectEx(&this->thisrect, this->thisstyle, this->bMenu, this->thisstyle);
 	}
 	// ==========TODO: dynamically & statically adding ui elements==========
-	//void setupUi();
+	void setupUi()
+	{
+
+	}
 	int handleMessages()
 	{
 		MSG msg;
@@ -111,10 +202,17 @@ public:
 		}
 		return (int)msg.wParam;
 	}
-	void show() const
+	bool show()
 	{
-		ShowWindow(this->thisHWND, SW_SHOW);
-		UpdateWindow(this->thisHWND);
+
+		this->bShow = ShowWindow(this->thisHWND, SW_SHOW);
+		return this->bShow = this->bShow && UpdateWindow(this->thisHWND);
+	}
+	bool destroy()
+	{
+		this->checkAccess();
+		this->bAccessable = !DestroyWindow(this->thisHWND);
+		return !this->bAccessable;
 	}
 	enum Signal {
 		LButtonDown,
@@ -167,20 +265,22 @@ public:
 	}
 	// ==========TODO: generating menus==========
 private:
-	static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	//private functions
+	//private variables
 	HWND thisHWND = NULL;
-	DWORD thisstyle = OverlappedWindow;
+	DWORD thisstyle = OverlappedWindow;//default style
 	LWindow* thisparent_window = NULL;
+	LWindowClass thiswindowclass;
 	LRect thisrect;
-	bool creation = false;
-	bool menu = false;
-	// ==========FIXME: const_cast not available==========
-	LFuncType slotsFunc[__last] = { (void(*)(void*))(Lui::DefaultFunction) };
+	bool bCreation = false;
+	bool bMenu = false;
+	bool bShow = false;
+	LFuncType slotsFunc[__last] = { (Lui::DefaultFunction) };
 	// ==========TODO: vector of LButton==========
 	//std::vector<LButton> buttons;
 
-	LTstdstr thisclassname, thistitle;
-		};
+	LTstdstr thistitle;
+};
 
 class LButton : Lui
 {
@@ -213,13 +313,15 @@ private:
 	HMENU thisHMENU;
 	static DWORD lastHMENU;
 
-	};
+};
 
 //static class variables initialization
 DWORD LButton::lastHMENU = ID_BTN;
 HINSTANCE Lui::thisHINSTANCE = NULL;
+LWindowClass LWindowClass::default_windowclass = LWindowClass();
+
 //core: handle messages
-LRESULT CALLBACK LWindow::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK LWindowClass::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	// ========== TODO: button messages ==========
 	switch (msg)
@@ -230,7 +332,7 @@ LRESULT CALLBACK LWindow::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
 		// button and menu messages
 		switch (wmId)
 		{
-			
+
 		default:
 			return DefWindowProc(hwnd, msg, wParam, lParam);
 		}
@@ -238,23 +340,27 @@ LRESULT CALLBACK LWindow::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
 	break;
 	case WM_CREATE:
 	{
-		// ========== TODO: create buttons ==========
+		// ========== TODO: create ui elements ==========
 
+		break;
 	}
-	break;
 	case WM_PAINT:
 	{
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(hwnd, &ps);
 		// TODO: 在此处添加使用 hdc 的任何绘图代码...
 		EndPaint(hwnd, &ps);
+		break;
 	}
-	break;
 	case WM_DESTROY:
+	{
 		PostQuitMessage(0);
 		break;
+	}
 	default:
+	{
 		return DefWindowProc(hwnd, msg, wParam, lParam);
+	}
 	}
 	return 0;
 
@@ -266,10 +372,10 @@ MAINDECLARE(hInstance, hPrevInstance, lpCmdLine, nCmdShow)
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
-	Lui::thisHINSTANCE = hInstance;
+	Lui::setHINSTANCE(hInstance);
 	LWindow window;
 	window.init();
 	auto a = window.create();
-	window.show();
+	a = window.show();
 	return window.handleMessages();
 }
