@@ -260,7 +260,7 @@ public:
 		PopupWindow = WS_POPUPWINDOW,
 		ChildWindow = WS_CHILDWINDOW
 	};
-	void connect(DWORD slot, LFuncType func) {
+	void connect(DWORD slot, const LFuncType& func) {
 #ifndef LUI_NOT_CHECK
 		if (slot >= __last || slot < 0)
 		{
@@ -268,7 +268,8 @@ public:
 			return;
 		}
 #endif // LUI_NOT_CHECK
-		slotsFunc[slot] = func;
+		memcpy(slotsFunc[slot], &func, sizeof(func));
+		//slotsFunc[slot] = func;
 	}
 	// ==========TODO: generating menus==========
 private:
@@ -282,7 +283,7 @@ private:
 	bool bCreation = false;
 	bool bMenu = false;
 	bool bShow = false;
-	LFuncType slotsFunc[__last] = { (Lui::DefaultFunction) };
+	LFuncType slotsFunc[__last] = {};
 	// ==========TODO: vector of LButton==========
 	//std::vector<LButton> buttons;
 	LTstdstr thistitle;
